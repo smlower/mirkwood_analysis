@@ -1,122 +1,55 @@
 import h5py
-import argparse
-import readhaloHDF5 as readhalo
 import numpy as np
-from glob import glob
 import sys, os
-
+import tqdm
 
 
 galaxy = int(sys.argv[1])
 
 base_path = '/orange/narayanan/s.lower/TNG/'
-snap_num = 99
-outfile = base_path+'/filtered_snapshots/snap99/galaxy_'+str(galaxy)+'_redo_test.hdf5'
-#outfile = base_path+'/galaxy_'+str(galaxy)+'_test.hdf5'
+snap_num = 95
+outfile = base_path+'/filtered_snapshots/snap095/galaxy_'+str(galaxy)+'.hdf5'
 
-gal_list = np.load('/orange/narayanan/s.lower/TNG/tng_galaxy_id.npz')['ID']
+
+gal_list = np.load('/orange/narayanan/s.lower/TNG/galaxy_selections/tng_galaxy_selection_z05.npz')['ID']
 gal = gal_list[int(galaxy)]
 
-print('halo reader')
-h = readhalo.HaloReader(str(base_path), '0'+str(snap_num), int(snap_num))
+snap1 = base_path+'/output/snapdir_095/snap_095.0.hdf5'
+fullfile = h5py.File(snap1, 'r')
 
-print('getting offsets')
-gas_offset = h.halo_offset[gal][0]
-star_offset = h.halo_offset[gal][4]
-gas_len = h.cat.SubhaloLenType[gal][0]
-star_len = h.cat.SubhaloLenType[gal][4]
+print('creating snapshot for galaxy '+str(gal))
 
-
-print('star offset:',star_offset)
-print('star len:',star_len)
-
-files_dir = base_path+'/output/snapdir_'+'0'+str(snap_num)+'/'
-files = sorted(glob(files_dir+'*.hdf5'), key = lambda name: int(name.split('.')[-2]))
-this_file_start0 = 0
-this_file_start4 = 0
-
-print('starting with gas particles')
-for snap_file in files:
-    with h5py.File(snap_file, 'r') as input_file:
-
-        print(snap_file)
-
-        this_file_end0 = this_file_start0 + len(input_file['PartType0']['Masses'])
-
-        #gas_checks
-        if (gas_offset+gas_len) > this_file_end0:
-            this_file_start0 += len(input_file['PartType0']['Masses'])
+with h5py.File(base_path+'simulation.hdf5','r') as input_file, h5py.File(outfile, 'w') as output_file: 
+    output_file.copy(fullfile['Header'], 'Header')
+    output_file.copy(fullfile['Config'], 'Config')
+    
+    print('copying gas attributes')
+    output_file.create_group('PartType0')
+    start = input_file['/Offsets/'+str(snap_num)+'/Subhalo/SnapByType'][gal, 0]
+    glength = input_file['/Groups/'+str(snap_num)+'/Subhalo/SubhaloLenType'][gal, 0]
+    print('gas start: ',start)
+    print('gas end: ',start+glength)
+    for k in tqdm.tqdm(input_file['/Snapshots/'+str(snap_num)+'/PartType0/']):
+        output_file['PartType0'][str(k)] = input_file['/Snapshots/'+str(snap_num)+'/PartType0/'+str(k)][start:start+glength]
+    
+    print('copying star attributes')
+    output_file.create_group('PartType4')
+    start = input_file['/Offsets/'+str(snap_num)+'/Subhalo/SnapByType'][gal, 4]
+    slength = input_file['/Groups/'+str(snap_num)+'/Subhalo/SubhaloLenType'][gal, 4]
+    print('star start: ',start)
+    print('star end: ',start+slength)
+    for k in tqdm.tqdm(input_file['/Snapshots/'+str(snap_num)+'/PartType4/']):
+        c = str(k)
+        if c == 'StellarAssembly':
             continue
-
-        elif this_file_start0 > (gas_offset+gas_len):
-            
-            break
-        
-        else:
-            output_file = h5py.File(outfile)
-            output_file.copy(input_file['Header'], 'Header')
-            output_file.copy(input_file['Config'], 'Config')
-            output_file.create_group('PartType0')
-            
-
-            print('writing from file',snap_file)
-            
-            for k in input_file['PartType0']:
-                if k in output_file['PartType0']:
-                    print('we are writing for the second time, i.e. galaxy data exists across two snapshots')
-                    in_data = input_file['PartType0'][k][0 : leftover]
-                    output_file['PartType0'][k] = np.hstack(output_file['PartType0'][k], in_data)
-                    print(len(in_data))
-                else: 
-                    print('writing for the first time')
-                    in_data = input_file['PartType0'][k][gas_offset-this_file_start0 : min(this_file_end0,(gas_offset+gas_len)-this_file_start0)]
-                    output_file['PartType0'][k] = in_data
-                    leftover = (gas_offset+gas_len) - this_file_end0
-            this_file_start0 += len(input_file['PartType0']['Masses'])
-
-            output_file.close()
-
-print('now doing star particles')
-for snap_file in files:
-    with h5py.File(snap_file, 'r') as input_file:
-        print(snap_file)
-        this_file_end4 = this_file_start4 + len(input_file['PartType4']['Masses'])
-        print(this_file_start4)
-        print(this_file_end4)
-        #star_checks                                                                           
-        if (star_offset+star_len) > this_file_end4:
-            print('got to first check')
-            print('gal:', (star_offset+star_len))
-            this_file_start4 += len(input_file['PartType4']['Masses'])
-            continue
-
-        elif this_file_start4 > (star_offset+star_len):
-            print('breaking due to second check')
-            break
-
-        else: 
-            output_file = h5py.File(outfile)
-            output_file.create_group('PartType4')
-            print('writing from file',snap_file)
-            for k in input_file['PartType4']:
-                if k in output_file['PartType4']:
-                    print('we are writing for the second time, i.e. galaxy data exists across two files')
-                    in_data = input_file['PartType4'][k][0 : leftover]
-                    output_file['PartType4'][k] = np.hstack(output_file['PartType4'][k], in_data)
-                    
-                else:
-                    print('writing for the first time')
-                    in_data = input_file['PartType4'][k][star_offset-this_file_start4 : min(this_file_end4,(star_offset+star_len)-this_file_start4)]
-                    output_file['PartType4'][k] = in_data
-                    leftover = (star_offset+star_len) - this_file_end4
-            this_file_start4 += len(input_file['PartType4']['Masses'])
+        output_file['PartType4'][str(k)] = input_file['/Snapshots/'+str(snap_num)+'/PartType4/'+str(k)][start:start+slength]
 
 
-re_out = h5py.File(outfile)
+re_out = h5py.File(outfile, 'r+')
 
 re_out['Header'].attrs.modify('NumFilesPerSnapshot', 1)
-re_out['Header'].attrs.modify('NumPart_ThisFile', np.array([gas_len, 0, 0, 0, star_len, 0]))
-re_out['Header'].attrs.modify('NumPart_Total', np.array([gas_len, 0, 0, 0, star_len, 0]))
+re_out['Header'].attrs.modify('NumPart_ThisFile', np.array([glength, 0, 0, 0, slength, 0]))
+re_out['Header'].attrs.modify('NumPart_Total', np.array([glength, 0, 0, 0, slength, 0]))
 
 re_out.close()
 

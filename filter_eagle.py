@@ -26,13 +26,13 @@ subgroup = IDs['SubGroupNumber'][int(galaxy)]
 
 print('Read in galaxy ID')
 
-snap_dir = '/orange/narayanan/s.lower/eagle/m50n752/snapshots/RefL0050N0752/'+dirname
+snap_dir = '/orange/narayanan/s.lower/eagle/dl_snaps/RefL0050N0752/'+dirname
 snap = read_eagle.EagleSnapshot(snap_dir+'/'+fname)
 
 snap.select_region(0, 50. * 0.6777, 0, 50. * 0.6777, 0, 50. * 0.6777)
 snap.split_selection(comm_rank, comm_size)
 print('Selected region')
-outdir = '/orange/narayanan/s.lower/eagle/filtered_snapshots/snap023/'
+outdir = '/orange/narayanan/s.lower/eagle/filtered_snapshots/snap0'+snap_num+'/'
 output_file = h5py.File(outdir+'/galaxy_'+str(galaxy)+'.hdf5', 'w')
 #output_file = h5py.File('/orange/narayanan/s.lower/eagle/filtered_snapshots/snap'+snap_num+'/galaxy_'+str(galaxy)+'.hdf5', 'w')
 input1 = h5py.File(snap_dir+'/'+fname, 'r')
